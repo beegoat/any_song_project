@@ -1,0 +1,8 @@
+
+.DS_Store
+front/
+back/.DS_Store
+back/.env
+back/package.json
+back/package-lock.json
+back/node_modules/
