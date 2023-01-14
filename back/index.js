@@ -48,7 +48,7 @@ const jwtMiddleware = async (req, res, next) => {
     // 토큰을 복호화한 후 유저를 찾는다. (token 생성시 _id값을 주었음)
       const user = await pool.query(
         `
-        SELECT id, nickname
+        SELECT id, nickname, isAdmin
         FROM users
         WHERE id = ?
         `, [decoded.userID]
@@ -111,7 +111,9 @@ app.get('/comment/:id', async(req, res) => {
         const [rows] = await pool.query(
             `
             SELECT 
-            c.id as comment_id, s.id as id, content, (select nickname from users as u where c.user_id = u.id) as nickname, (select id from users as u where c.user_id = u.id) as user_id, DATE_FORMAT(create_date, '%m월 %d일') as create_date
+            c.id as comment_id, s.id as id, content, 
+            (select nickname from users as u where c.user_id = u.id) as nickname, (select id from users as u where c.user_id = u.id) as user_id, 
+            DATE_FORMAT(create_date, '%m월 %d일') as create_date
             FROM comment AS c LEFT JOIN songs AS s ON c.song_id = s.id 
             WHERE s.id = ? AND delete_date IS NULL AND c.song_id IS NOT NULL
             `, [id]
@@ -175,17 +177,10 @@ app.post('/comment', jwtMiddleware, async(req, res) => {
 // 미들웨어로 로그인 한 상태 확인하고 그대로 유저 정보 받아와서 쿼리 날림
 app.delete('/comment/:id', jwtMiddleware, async(req, res) => {
     const commentId = req.params.id;
-    const {id, isSong, isAlbum} = req.body
+    const {id, isSong, isAlbum, isAdmin} = req.body
     const user_id = req.user[0][0].id
     try{
-        const sameAuthor = await pool.query(
-            `
-            SELECT user_id
-            FROM comment
-            WHERE id = ?
-            `, [commentId]
-        )
-        if(sameAuthor[0][0].user_id === user_id){
+        if(isAdmin){
             await pool.query(
                 `
                 UPDATE comment
@@ -193,29 +188,46 @@ app.delete('/comment/:id', jwtMiddleware, async(req, res) => {
                 WHERE id = ?
                 `, [commentId]
             )
-            if(isAlbum){
+        } else {
+            const sameAuthor = await pool.query(
+                `
+                SELECT user_id
+                FROM comment
+                WHERE id = ?
+                `, [commentId]
+            )
+            if(sameAuthor[0][0].user_id === user_id){
+                await pool.query(
+                    `
+                    UPDATE comment
+                    SET delete_date = NOW()
+                    WHERE id = ?
+                    `, [commentId]
+                )
+            } else {
+                return res.status(400)
+            }
+        }
+        if(isAlbum){
+        const [rows] = await pool.query(
+            `
+            SELECT 
+            c.id as comment_id, a.id as id, content, (select nickname from users as u where c.user_id = u.id) as nickname, (select id from users as u where c.user_id = u.id) as user_id, DATE_FORMAT(create_date, '%m월 %d일') as create_date
+            FROM comment AS c LEFT JOIN album AS a ON c.album_id = a.id 
+            WHERE a.id = ? AND delete_date IS NULL AND c.album_id IS NOT NULL
+            `, [id]
+        )
+        return res.json(rows)
+        } else if(isSong){
             const [rows] = await pool.query(
                 `
                 SELECT 
-                c.id as comment_id, a.id as id, content, (select nickname from users as u where c.user_id = u.id) as nickname, (select id from users as u where c.user_id = u.id) as user_id, DATE_FORMAT(create_date, '%m월 %d일') as create_date
-                FROM comment AS c LEFT JOIN album AS a ON c.album_id = a.id 
-                WHERE a.id = ? AND delete_date IS NULL AND c.album_id IS NOT NULL
+                c.id as comment_id, s.id as id, content, (select nickname from users as u where c.user_id = u.id) as nickname, (select id from users as u where c.user_id = u.id) as user_id, DATE_FORMAT(create_date, '%m월 %d일') as create_date
+                FROM comment AS c LEFT JOIN songs AS s ON c.song_id = s.id 
+                WHERE s.id = ? AND delete_date IS NULL AND c.song_id IS NOT NULL
                 `, [id]
             )
             return res.json(rows)
-            } else if(isSong){
-                const [rows] = await pool.query(
-                    `
-                    SELECT 
-                    c.id as comment_id, s.id as id, content, (select nickname from users as u where c.user_id = u.id) as nickname, (select id from users as u where c.user_id = u.id) as user_id, DATE_FORMAT(create_date, '%m월 %d일') as create_date
-                    FROM comment AS c LEFT JOIN songs AS s ON c.song_id = s.id 
-                    WHERE s.id = ? AND delete_date IS NULL AND c.song_id IS NOT NULL
-                    `, [id]
-                )
-                return res.json(rows)
-            }
-        } else {
-            return res.status(400)
         }
     } catch(e) {
         console.error(e);
@@ -224,18 +236,10 @@ app.delete('/comment/:id', jwtMiddleware, async(req, res) => {
 
 app.put('/comment/:id', jwtMiddleware, async(req, res) => {
     const commentId = req.params.id;
-    const {id, content, isSong, isAlbum} = req.body.data
+    const {id, content, isSong, isAlbum, isAdmin} = req.body.data
     const user_id = req.user[0][0].id
     try{
-        const sameAuthor = await pool.query(
-            `
-            SELECT user_id
-            FROM comment
-            WHERE id = ?
-            `, [commentId]
-        )
-        console.log(sameAuthor[0][0].user_id)
-        if(sameAuthor[0][0].user_id === user_id){
+        if(isAdmin){
             if(isAlbum){
                 await pool.query(
                     `
@@ -274,8 +278,54 @@ app.put('/comment/:id', jwtMiddleware, async(req, res) => {
                 return res.json(rows)
             }
         } else {
+            const sameAuthor = await pool.query(
+                `
+                SELECT user_id
+                FROM comment
+                WHERE id = ?
+                `, [commentId]
+            )
+            if(sameAuthor[0][0].user_id === user_id){
+                if(isAlbum){
+                    await pool.query(
+                        `
+                        UPDATE comment
+                        SET content = ?,
+                        modified_date = NOW()
+                        WHERE id = ?
+                        `, [content, commentId]
+                    )
+                    const [rows] = await pool.query(
+                        `
+                        SELECT 
+                        c.id as comment_id, a.id as id, content, (select nickname from users as u where c.user_id = u.id) as nickname, (select id from users as u where c.user_id = u.id) as user_id, DATE_FORMAT(create_date, '%m월 %d일') as create_date
+                        FROM comment AS c LEFT JOIN album AS a ON c.album_id = a.id 
+                        WHERE a.id = ? AND delete_date IS NULL AND c.album_id IS NOT NULL
+                        `, [id]
+                    )
+                    res.json(rows)
+                } else if(isSong) {
+                    await pool.query(
+                        `
+                        UPDATE comment
+                        SET content = ?,
+                        modified_date = NOW()
+                        WHERE id = ?
+                        `, [content, commentId]
+                    )
+                    const [rows] = await pool.query(
+                        `
+                        SELECT 
+                        c.id as comment_id, s.id as id, content, (select nickname from users as u where c.user_id = u.id) as nickname, (select id from users as u where c.user_id = u.id) as user_id, DATE_FORMAT(create_date, '%m월 %d일') as create_date
+                        FROM comment AS c LEFT JOIN songs AS s ON c.song_id = s.id 
+                        WHERE s.id = ? AND delete_date IS NULL AND c.song_id IS NOT NULL
+                        `, [id]
+                    )
+                    return res.json(rows)
+                }
+        } else {
             return res.status(400)
-        }
+        }}
     } catch (e) {
         console.error(e);
     }
@@ -416,7 +466,7 @@ app.get('/board/total', async(req, res) => {
         const [rows] = await pool.query(
             `
             SELECT bc.name, b.id, b.subject, (select nickname from users as u where b.user_id = u.id) as nickname, date_format(b.created_date, '%m/%d') as created_date, hits
-            FROM board as b LEFT JOIN board_category as bc ON b.category = bc.id ORDER BY id DESC
+            FROM board as b LEFT JOIN board_category as bc ON b.category = bc.id where bc.id != 5 ORDER BY id DESC
             `
         )
         res.json(rows);
@@ -577,35 +627,55 @@ app.get('/board/total', async(req, res) => {
 
 app.put('/board/:id', jwtMiddleware, async(req, res) => {
     const id = req.params.id;
-    const {subject, content, user_id, category} = req.body
+    const {subject, content, user_id, category, isAdmin} = req.body
     try{
-        const sameAuthor = await pool.query(
-            `
-            select user_id from board where id = ?
-            `, [id]
-        )
-        if (sameAuthor[0][0].user_id === user_id) {
+        if(isAdmin){
             await pool.query(
-            `
-            UPDATE board SET
-            subject = ?,
-            content = ?,
-            category = ?,
-            modified_date = NOW()
-            WHERE 
-            id = ?
-            `, [subject, content, category, id])
-
-            const response = await pool.query(
-            `
-            SELECT bc.id 
-            FROM board AS b LEFT JOIN board_category bc ON b.category = bc.id where b.id = ?;
-            `, [id]
-            )
-            res.json(response)
+                `
+                UPDATE board SET
+                subject = ?,
+                content = ?,
+                category = ?,
+                modified_date = NOW()
+                WHERE 
+                id = ?
+                `, [subject, content, category, id])
+    
+                const response = await pool.query(
+                `
+                SELECT bc.id 
+                FROM board AS b LEFT JOIN board_category bc ON b.category = bc.id where b.id = ?;
+                `, [id]
+                )
+                res.json(response)
         } else {
-            res.status(400)
-        }
+            const sameAuthor = await pool.query(
+                `
+                select user_id from board where id = ?
+                `, [id]
+            )
+            if (sameAuthor[0][0].user_id === user_id) {
+                await pool.query(
+                `
+                UPDATE board SET
+                subject = ?,
+                content = ?,
+                category = ?,
+                modified_date = NOW()
+                WHERE 
+                id = ?
+                `, [subject, content, category, id])
+
+                const response = await pool.query(
+                `
+                SELECT bc.id 
+                FROM board AS b LEFT JOIN board_category bc ON b.category = bc.id where b.id = ?;
+                `, [id]
+                )
+                res.json(response)
+            } else {
+                res.status(400)
+            }}
     } catch(e) {
         console.error(e)
     }
@@ -640,8 +710,25 @@ app.post('/board/comment/:id', jwtMiddleware, async(req, res) => {
 
 app.delete('/board/comment/:id', jwtMiddleware, async(req, res) => {
     const id = req.params.id;
-    const { board_id } = req.body
+    const { board_id, isAdmin } = req.body
     try {
+        if(isAdmin){
+            await pool.query(
+                `
+                DELETE FROM board_comment
+                WHERE id = ?
+                `, [id]
+            )
+            const response = await pool.query(
+                `
+                SELECT bc.content AS comment_content, 
+                (SELECT nickname FROM users AS u WHERE bc.user_id = u.id) AS comment_name, (SELECT id FROM users AS u WHERE bc.user_id = u.id) AS comment_user, date_format(bc.created_date, '%m %d') AS c_created_date, bc.id as comment_id
+                FROM board_comment AS bc
+                WHERE bc.board_id = ?
+                `, [board_id]
+            )
+            res.json(response)
+        } else {
         const sameAuthor = await pool.query(
             `
             SELECT user_id 
@@ -667,50 +754,72 @@ app.delete('/board/comment/:id', jwtMiddleware, async(req, res) => {
         res.json(response)
         } else {
             res.status(400)
-        } 
-    } catch(e) {
+        }
+    }} catch(e) {
         console.error(e)
     }
  })
 
 app.put('/board/comment/:id', jwtMiddleware, async(req, res) => {
     const id = req.params.id;
-    const { content, user_id, board_id } = req.body
+    const { content, user_id, board_id, isAdmin } = req.body
     try{
-        const sameAuthor = await pool.query(
-            `
-            SELECT user_id 
-            FROM board_comment
-            WHERE id = ?
-            `
-        , [id])
-        if(sameAuthor[0][0].user_id === req.user[0][0].id){
-        await pool.query(
-            `
-            UPDATE board_comment SET
-            content = ?,
-            modified_date = NOW()
-            WHERE 
-            id = ?
-            `, [content, id]     
-        )
-        const response = await pool.query(
-            `
-            SELECT bc.content AS comment_content, 
-            (SELECT nickname FROM users AS u WHERE bc.user_id = u.id) AS comment_name, (SELECT id FROM users AS u WHERE bc.user_id = u.id) AS comment_user, date_format(bc.created_date, '%m %d') AS c_created_date, bc.id as comment_id
-            FROM board_comment AS bc
-            WHERE bc.board_id = ?
-            `, [board_id]
-        )
-        res.json(response)
+        if(isAdmin){
+            await pool.query(
+                `
+                UPDATE board_comment SET
+                content = ?,
+                modified_date = NOW()
+                WHERE 
+                id = ?
+                `, [content, id]     
+            )
+            const response = await pool.query(
+                `
+                SELECT bc.content AS comment_content, 
+                (SELECT nickname FROM users AS u WHERE bc.user_id = u.id) AS comment_name, (SELECT id FROM users AS u WHERE bc.user_id = u.id) AS comment_user, date_format(bc.created_date, '%m %d') AS c_created_date, bc.id as comment_id
+                FROM board_comment AS bc
+                WHERE bc.board_id = ?
+                `, [board_id]
+            )
+            res.json(response)
+            console.log(response[0])
         } else {
+            const sameAuthor = await pool.query(
+                `
+                SELECT user_id 
+                FROM board_comment
+                WHERE id = ?
+                `
+            , [id])
+            if(sameAuthor[0][0].user_id === req.user[0][0].id){
+                await pool.query(
+                    `
+                    UPDATE board_comment SET
+                    content = ?,
+                    modified_date = NOW()
+                    WHERE 
+                    id = ?
+                    `, [content, id]     
+                )
+                const response = await pool.query(
+                    `
+                    SELECT bc.content AS comment_content, 
+                    (SELECT nickname FROM users AS u WHERE bc.user_id = u.id) AS comment_name, (
+                    SELECT id FROM users AS u WHERE bc.user_id = u.id) AS comment_user, 
+                    date_format(bc.created_date, '%m %d') AS c_created_date, bc.id as comment_id
+                    FROM board_comment AS bc
+                    WHERE bc.board_id = ?
+                    `, [board_id]
+                )
+                res.json(response)
+            } else {
             res.status(400)
+            }
+        }} catch(e) {
+            console.error(e)
         }
-    } catch(e) {
-        console.error(e)
-    }
  })
-
 
  
 app.post('/user', async(req, res) =>{
@@ -835,20 +944,13 @@ app.post('/login', async(req, res) => {
         )
         // 조회하여 해당 아이디가 있으면 비밀번호를 확인
         if(rows){
-            const [passRows] = await pool.query(
-                `
-                SELECT password
-                FROM users
-                WHERE id = ?
-                `, [id]
-            )
-            bcrypt.compare(password, passRows[0].password, async(error, isMatch) => {
+            bcrypt.compare(password, rows[0].password, async(error, isMatch) => {
                 if(error){
-                    return res.status(500).json({ error: "something wrong" });
+                    return res.status(500).json({ error: "비밀번호 오류" });
                 }
                 if (isMatch) {
-                    const accessToken = jwt.sign({ userID: id }, ACCESS_SECRET, {expiresIn: '30m'});
-                    const refreshToken = jwt.sign({ userID: id }, REFRESH_SECRET, {expiresIn: '7d'});
+                    const accessToken = jwt.sign({ userID: id, isAdmin:rows[0].isAdmin }, ACCESS_SECRET, {expiresIn: '30m'});
+                    const refreshToken = jwt.sign({ userID: id, isAdmin:rows[0].isAdmin }, REFRESH_SECRET, {expiresIn: '7d'});
                     await pool.query(
                         `
                         UPDATE users 
@@ -888,7 +990,8 @@ app.post('/jwtauthcheck', jwtMiddleware,  async(req, res) => {
     return res.json({
         isAuth: true,
         user: req.user[0][0].id,
-        nickname: req.user[0][0].nickname
+        nickname: req.user[0][0].nickname,
+        isAdmin: req.user[0][0].isAdmin
      });
 });
 
