@@ -11,7 +11,7 @@ import cookieParser from 'cookie-parser';
 const app = express();
 const port = 3001
 const pool = mysql.createPool({
-    host: "127.0.0.1",
+    host: "43.201.140.172",
     user: "deepal",
     password: "deepal",
     database: "anysong",
@@ -28,7 +28,7 @@ const GET_TOP_TRACKS ="https://ws.audioscrobbler.com/2.0/?method=chart.gettoptra
 
 
 app.use(cors({
-    "origin" : "localhost:3000",
+    "origin" : "43.201.140.172:3000",
     credentials: true
   }));
 app.use(express.json());
