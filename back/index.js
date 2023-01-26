@@ -28,7 +28,12 @@ const GET_TOP_TRACKS ="https://ws.audioscrobbler.com/2.0/?method=chart.gettoptra
 
 
 app.use(cors({
-    "origin" : "43.201.140.172:3000",
+    "origin" : [
+        "43.201.140.172",
+        "43.201.140.172:3000",
+        "localhost:3000",
+        "http://deepal.site"
+    ],
     credentials: true
   }));
 app.use(express.json());
