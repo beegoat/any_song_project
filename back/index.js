@@ -11,7 +11,7 @@ import cookieParser from 'cookie-parser';
 const app = express();
 const port = 3001
 const pool = mysql.createPool({
-    host: "43.201.140.172:3306",
+    host: "http://43.201.140.172:3306",
     user: "deepal",
     password: "deepal",
     database: "anysong",
