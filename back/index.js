@@ -28,7 +28,7 @@ const GET_TOP_TRACKS ="https://ws.audioscrobbler.com/2.0/?method=chart.gettoptra
 
 
 app.use(cors({
-    "origin" : "http://43.201.140.172",
+    "origin" : "http://localhost:3000",
     credentials: true
   }));
 app.use(express.json());
