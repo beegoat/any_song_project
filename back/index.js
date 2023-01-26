@@ -23,7 +23,9 @@ const saltRounds = 10;
 const ACCESS_SECRET = "sanjoozzang"
 const REFRESH_SECRET = "sanjoozzang2"
 
+const API_KEY = "e35e27f252f8e4498dabac2591997ed0"
 const GET_TOP_TRACKS ="https://ws.audioscrobbler.com/2.0/?method=chart.gettoptracks&api_key=e35e27f252f8e4498dabac2591997ed0&format=json"
+
 
 app.use(cors({
     "origin" : "http://localhost:3000",
@@ -48,7 +50,7 @@ const jwtMiddleware = async (req, res, next) => {
     // 토큰을 복호화한 후 유저를 찾는다. (token 생성시 _id값을 주었음)
       const user = await pool.query(
         `
-        SELECT id, nickname, isAdmin
+        SELECT id, nickname, isAdmin, introduction
         FROM users
         WHERE id = ?
         `, [decoded.userID]
@@ -67,6 +69,399 @@ const jwtMiddleware = async (req, res, next) => {
     });
 }
   };
+
+app.post('/user', async(req, res) =>{
+    const { id, nickname } = req.body;
+    let { password } = req.body;
+
+
+    // 솔트 = 10번 치고 해쉬화 
+    bcrypt.genSalt(saltRounds, async function(err, salt){
+        if(err){
+            return res.status(500).json({
+                registerSuccess: false,
+                message: "비밀번호 해쉬화 실패."
+            });
+        }
+        bcrypt.hash(password, salt, async function(err, hashedPassword){
+            if(err){
+                return res.status(500).json({
+                    registerSuccess: false,
+                    message: "비밀번호 해쉬화 실패."
+                })
+            }
+            password = hashedPassword ;
+            const introduction = "안녕하세요 " + nickname + "입니다.";
+            try{
+                await pool.query(
+                    `
+                    INSERT INTO users
+                    SET id = ?,
+                    password = ?,
+                    nickname = ?,
+                    introduction = ?,
+                    created_date = NOW()
+                    `
+                    , [id, password, nickname, introduction])
+                res.json(200)
+                } catch(e) {
+                    console.error(e)
+                }
+            })
+        })
+})
+
+// 아이디, 닉네임 중복확인 API
+app.get('/sameid', async(req, res) => {
+    const {id} = req.query
+    try{
+        const [rows] = await pool.query(
+            `
+            SELECT id
+            FROM users
+            WHERE id = ?
+            `, [id]
+        )
+        if(rows.length){
+            return res.json({code: 400, message : "중복된 아이디가 있습니다."})
+        } else {
+            return res.json({code: 200, message : "사용가능합니다."})
+        }
+    } catch(e) {
+        console.error(e)
+    }
+})
+
+app.get('/samenickname', async(req, res) => {
+    const { nickname } = req.query
+    try{
+        const [rows] = await pool.query(
+            `
+            SELECT nickname
+            FROM users
+            WHERE nickname = ?
+            `, [nickname]
+        )
+        if(rows.length){
+            return res.json({code: 400, message : "중복된 닉네임이 있습니다."})
+        } else {
+            return res.json({code: 200, message : "사용가능합니다."})
+        }
+    } catch(e) {
+        console.error(e)
+    }
+})
+
+
+// 로그인 하면 access, refresh Token 발급하여 쿠키에 담아 보냄.
+app.post('/login', async(req, res) => {
+    const { id, password } = req.body
+    try{ 
+        const [rows] =  await pool.query(
+            `
+            SELECT *
+            FROM users
+            WHERE id = ? AND deleted_date is NULL
+            `, [id]
+        )
+        // 조회하여 해당 아이디가 있으면 비밀번호를 확인
+        if(rows){
+            bcrypt.compare(password, rows[0].password, async(error, isMatch) => {
+                if(error){
+                    return res.status(500).json({ error: "비밀번호 오류" });
+                }
+                if (isMatch) {
+                    const accessToken = jwt.sign({ userID: id, isAdmin:rows[0].isAdmin }, ACCESS_SECRET, {expiresIn: '30m'});
+                    const refreshToken = jwt.sign({ userID: id, isAdmin:rows[0].isAdmin }, REFRESH_SECRET, {expiresIn: '7d'});
+                    await pool.query(
+                        `
+                        UPDATE users 
+                        SET token = ?
+                        WHERE id = ?
+                        `, [accessToken, id]
+                    )
+                    res.cookie('accessToken', accessToken, {
+                      httpOnly: true,
+                    })
+
+                    res.cookie('refreshToken', refreshToken, {
+                        httpOnly: true,
+                    })
+                    
+                    res.status(200).json('login success');
+                } else {
+                    return res.status(403).json({
+                      loginSuccess: false,
+                      message: "비밀번호가 틀렸습니다.",
+                })
+            }})
+        } else {
+            res.json("해당하는 아이디가 없습니다.")
+        }
+    } catch(e) {
+        console.error(e)
+    }
+}, )
+
+
+app.post('/jwtauthcheck', jwtMiddleware,  async(req, res) => {
+    if (!req.user){ 
+        return res.json({ isAuth: false });
+    }
+  // 유저가 있다는 이야기니 인증 처리
+    return res.json({
+        isAuth: true,
+        user: req.user[0][0].id,
+        nickname: req.user[0][0].nickname,
+        isAdmin: req.user[0][0].isAdmin,
+        introduction: req.user[0][0].introduction
+     });
+});
+
+app.get('/logout', jwtMiddleware, async(req, res) => {
+    try{
+        res.cookie('accessToken', '');
+        res.status(200).json("logout success!")
+    } catch(e) {
+        res.status(500).json(error)
+    }
+})
+
+// Nav 음악검색
+
+app.get('/musicsearch', async(req, res) => {
+    let songInfo = []
+    let songInfoComplete = []
+    
+    const { searchWord } = req.query
+    
+    try{
+        const getAlbumInfo = async() => {
+            try{
+            const response = await axios.get(`http://ws.audioscrobbler.com/2.0/?method=track.search&track=${searchWord}&api_key=${API_KEY}&format=json&limit=5`, {})
+            
+            if(response.data.results.trackmatches !== undefined ){
+                await response.data.results.trackmatches.track.map((song) =>{
+                    if(song.name && song.artist){
+                    songInfo.push({ song : song.name, artist : song.artist })
+                    } 
+                })
+            } else {
+                return
+            }
+            } catch(e) {
+                console.error(e)
+            } 
+        }
+    
+        const getAlbumCover = async() => {
+            let i = 0
+            try{
+            while(i<5){
+                const getMusicCover = await axios.get(`https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${API_KEY}&artist=${songInfo[i].artist}&track=${songInfo[i].song}&format=json`)
+                if(getMusicCover.data.track.album !== undefined ){
+                    songInfoComplete.push({song : songInfo[i].song, artist: songInfo[i].artist, image_url: getMusicCover.data.track.album.image[2]['#text']})
+                } else {
+                    songInfoComplete.push({song : songInfo[i].song, artist: songInfo[i].artist})
+                }
+                i++;
+            }
+            } catch(e) {
+                console.error(e)
+            }
+        }
+        
+
+        const getAlbumComplete = async() => {
+            await getAlbumInfo();
+            await getAlbumCover();
+            res.json(songInfoComplete)
+        }
+
+        getAlbumComplete();
+        
+    } catch(e) {
+        console.error(e)
+    }
+})
+
+app.get('/searchinfo', async(req, res) => {
+    const { artist, song } = req.query
+    let musicInfo = []
+
+    try{
+    const response = await axios.get(`http://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${API_KEY}&artist=${artist}&track=${song}&format=json`)
+    const info = response.data.track
+    musicInfo.push({songTitle : info.name, songArtist: info.artist.name, artistInfo : info.artist.url, albumTitle : info.album.title, albumCover : info.album.image[3]['#text'], songTags : info.toptags.tag, publishedDate : info.wiki.published, songIntroduction : info.wiki.content})
+    res.json(musicInfo)
+    } catch(e) {
+        console.error(e)
+    }
+
+})
+// Mypage 관련 함수
+
+app.get('/myalbuminfo', jwtMiddleware, async(req, res) => {
+    const user = req.user[0][0].id
+    try{
+        const response = await pool.query(
+            `
+            SELECT (SELECT image_url FROM album_cover AS ac WHERE a.id = ac.album_id) AS img,
+            a.title AS title, a.artist AS artist, ar.rate AS rate, ar.user_id 
+            FROM album_rating AS ar LEFT JOIN album AS a ON ar.album_id = a.id 
+            WHERE ar.user_id = ?
+            `, [user]
+            )
+        return res.json(response)
+    } catch(e) {
+        console.error(e);
+    }
+})
+
+app.get('/mysonginfo', jwtMiddleware, async(req, res) => {
+    const user = req.user[0][0].id
+    try{
+        const response = await pool.query(
+            `
+            SELECT (SELECT image_url FROM songs_cover sc WHERE s.id = sc.songs_id) AS img, 
+            s.title AS title, s.artist AS artist, sr.rate AS rate, sr.user_id  
+            FROM songs_rating AS sr LEFT JOIN songs AS s on sr.song_id = s.id WHERE sr.user_id = ?
+            `, [user]
+        )
+        return res.json(response)
+    } catch(e) {
+        console.error(e)
+    }
+})
+
+app.get('/myarticleinfo', jwtMiddleware, async(req, res) => {
+    const user = req.user[0][0].id
+    try{
+        const response = await pool.query(
+            `
+            SELECT id, category, subject, DATE_FORMAT(created_date, '%m/%d') as date, hits 
+            FROM board WHERE user_id = ?
+            `, [user]
+        )
+        return res.json(response)
+    } catch(e) {
+        console.error(e)
+    }
+})
+
+app.put('/mynickname', jwtMiddleware, async(req, res) => {
+    const { nickname } = req.body
+    const user = req.user[0][0].id
+    try {
+        await pool.query(
+            `
+            UPDATE users 
+            SET nickname = ?
+            WHERE id = ?
+            `, [nickname, user]
+        )
+    } catch(e) {
+        console.error(e)
+    }
+})
+
+app.put('/myintroduction', jwtMiddleware, async(req, res) => {
+    const { introduction } = req.body
+    const user = req.user[0][0].id
+    try {
+        await pool.query(
+            `
+            UPDATE users
+            SET introduction = ?
+            WHERE id = ?
+            `, [introduction, user]
+        )
+    } catch(e) {
+        console.error(e)
+    }
+})
+
+app.post('/comparepw', jwtMiddleware, async(req, res) =>{
+
+    const user = req.user[0][0].id
+    const { password } = req.body
+    const [rows] =  await pool.query(
+        `
+        SELECT *
+        FROM users
+        WHERE id = ?
+        `, [user]
+    )
+    console.log(rows)
+    if(rows){
+        bcrypt.compare(password, rows[0].password, async(error, isMatch)=> {
+        if(error){
+            console.log("error")
+        }
+        if(isMatch){
+            console.log("match")
+            return res.json({ status:200, message: "비밀번호가 일치합니다."})
+        } else {
+            return res.json({ status:500,  message: "비밀번호가 일치하지 않습니다." });
+        }
+    })
+    } else {
+        return res.json({status:500, message: "알 수 없는 오류가 발생했습니다."})
+    }
+})
+
+app.put('/mypassword', jwtMiddleware, async(req, res) =>{
+    let { password } = req.body;
+    const user = req.user[0][0].id
+
+    bcrypt.genSalt(saltRounds, async function(err, salt){
+        if(err){
+            return res.status(500).json({
+                registerSuccess: false,
+                message: "비밀번호 해쉬화 실패."
+            });
+        }
+        bcrypt.hash(password, salt, async function(err, hashedPassword){
+            if(err){
+                return res.status(500).json({
+                    registerSuccess: false,
+                    message: "비밀번호 해쉬화 실패."
+                })
+            }
+            password = hashedPassword ;
+            
+            try{
+                await pool.query(
+                    `
+                    UPDATE users
+                    SET password = ?
+                    WHERE id = ?
+                    `
+                    , [password, user])
+                res.json(200)
+                } catch(e) {
+                    console.error(e)
+                }
+            })
+        })
+})
+
+app.put('/withdraw', jwtMiddleware, async(req, res) =>{
+    const user = req.user[0][0].id
+    try{
+        await pool.query(
+            `
+            UPDATE users
+            SET deleted_date = NOW()
+            WHERE id = ?
+            `, [user]
+        )
+        res.status(200).json({message : "계정이 성공적으로 삭제되었습니다."})
+    } catch(e) {
+        console.error(e)
+    }
+})
+// 별점평가
 
 app.get('/songs', async(req, res) => {
     const [rows] = await pool.query(
@@ -173,8 +568,6 @@ app.post('/comment', jwtMiddleware, async(req, res) => {
     }
 })
 
-
-// 미들웨어로 로그인 한 상태 확인하고 그대로 유저 정보 받아와서 쿼리 날림
 app.delete('/comment/:id', jwtMiddleware, async(req, res) => {
     const commentId = req.params.id;
     const {id, isSong, isAlbum, isAdmin} = req.body
@@ -461,6 +854,7 @@ app.delete('/rating', async(req, res) => {
     } 
 })
 
+// 게시판 
 app.get('/board/total', async(req, res) => {
     try{
         const [rows] = await pool.query(
@@ -605,7 +999,7 @@ app.get('/board/total', async(req, res) => {
     }
  })
 
- app.delete('/board/:id', jwtMiddleware, async(req, res) => {
+ app.delete('/board/:id', jwtMiddleware, async(req, res)=> {
     const id = req.params.id;
     const {user_id} = req.body;
     try{
@@ -822,190 +1216,23 @@ app.put('/board/comment/:id', jwtMiddleware, async(req, res) => {
  })
 
  
-app.post('/user', async(req, res) =>{
-    const { id, nickname } = req.body;
-    let { password } = req.body;
-    // if(
-    //     id === "" ||
-    //     password === "" ||
-    //     nickname === ""
-    //     ){
-    //         return res.json({ registerSuccess: false, message : "정보를 입력하세요"});
-    //     }
-    // 프론트에서 js로 처리 가능
-    
-    // 중복 아이디 검사
-    const sameUser = await pool.query(
-        `
-        SELECT id FROM users WHERE id = ?
-        `, [id]
-    )
-    
+// Home 관련 함수
 
-    if( !sameUser[0] ) {
-        return res.json({
-            registerSuccess: false, message: "이미 존재하는 아이디입니다."
-        })
-    }
-
-    // 중복 닉네임 검사
-    const sameNickname = await pool.query(
-        `
-        SELECT nickname FROM users WHERE nickname = ?
-        `, [nickname]
-    )
-    if( !sameNickname[0]) {
-        return res.json({
-            registerSuccess: false, message: "이미 존재하는 닉네임 입니다."
-        })
-    }
-
-    // 솔트 = 10번 치고 해쉬화 
-    bcrypt.genSalt(saltRounds, async function(err, salt){
-        if(err){
-            return res.status(500).json({
-                registerSuccess: false,
-                message: "비밀번호 해쉬화 실패."
-            });
-        }
-        bcrypt.hash(password, salt, async function(err, hashedPassword){
-            if(err){
-                return res.status(500).json({
-                    registerSuccess: false,
-                    message: "비밀번호 해쉬화 실패."
-                })
-            }
-            password = hashedPassword ;
-            const introduction = "안녕하세요 " + nickname + "입니다.";
-            try{
-                await pool.query(
-                    `
-                    INSERT INTO users
-                    SET id = ?,
-                    password = ?,
-                    nickname = ?,
-                    introduction = ?,
-                    created_date = NOW()
-                    `
-                    , [id, password, nickname, introduction])
-                res.json(200)
-                } catch(e) {
-                    console.error(e)
-                }
-            })
-        })
-    })
-
-
-// 아이디, 닉네임 중복확인 API
-app.get('/sameid', async(req, res) => {
-    const {id} = req.query
-    try{
-        const [rows] = await pool.query(
+app.get('/getnotice', async(req, res) => {
+    try {
+        const response = await pool.query(
             `
-            SELECT id
-            FROM users
-            WHERE id = ?
-            `, [id]
+            SELECT id, subject, DATE_FORMAT(created_date, '%Y-%m-%d') AS date 
+            FROM board WHERE category = 5 ORDER BY id DESC LIMIT 3
+            `
         )
-        res.json(rows)
+        res.json(response)
     } catch(e) {
         console.error(e)
     }
 })
 
-app.get('/samenickname', async(req, res) => {
-    const { nickname } = req.query
-    try{
-        const [rows] = await pool.query(
-            `
-            SELECT nickname
-            FROM users
-            WHERE nickname = ?
-            `, [nickname]
-        )
-        res.json(rows)
-    } catch(e) {
-        console.error(e)
-    }
-})
-
-
-// 로그인 하면 access, refresh Token 발급하여 쿠키에 담아 보냄.
-app.post('/login', async(req, res) => {
-    const { id, password } = req.body
-    try{ 
-        const [rows] =  await pool.query(
-            `
-            SELECT *
-            FROM users
-            WHERE id = ?
-            `, [id]
-        )
-        // 조회하여 해당 아이디가 있으면 비밀번호를 확인
-        if(rows){
-            bcrypt.compare(password, rows[0].password, async(error, isMatch) => {
-                if(error){
-                    return res.status(500).json({ error: "비밀번호 오류" });
-                }
-                if (isMatch) {
-                    const accessToken = jwt.sign({ userID: id, isAdmin:rows[0].isAdmin }, ACCESS_SECRET, {expiresIn: '30m'});
-                    const refreshToken = jwt.sign({ userID: id, isAdmin:rows[0].isAdmin }, REFRESH_SECRET, {expiresIn: '7d'});
-                    await pool.query(
-                        `
-                        UPDATE users 
-                        SET token = ?
-                        WHERE id = ?
-                        `, [accessToken, id]
-                    )
-                    res.cookie('accessToken', accessToken, {
-                      httpOnly: true,
-                    })
-
-                    res.cookie('refreshToken', refreshToken, {
-                        httpOnly: true,
-                    })
-                    
-                    res.status(200).json('login success');
-                } else {
-                    return res.status(403).json({
-                      loginSuccess: false,
-                      message: "비밀번호가 틀렸습니다.",
-                })
-            }})
-        } else {
-            res.json("해당하는 아이디가 없습니다.")
-        }
-    } catch(e) {
-        console.error(e)
-    }
-}, )
-
-
-app.post('/jwtauthcheck', jwtMiddleware,  async(req, res) => {
-    if (!req.user){ 
-        return res.json({ isAuth: false });
-    }
-  // 유저가 있다는 이야기니 인증 처리
-    return res.json({
-        isAuth: true,
-        user: req.user[0][0].id,
-        nickname: req.user[0][0].nickname,
-        isAdmin: req.user[0][0].isAdmin
-     });
-});
-
-app.get('/logout', jwtMiddleware, async(req, res) => {
-    try{
-        res.cookie('accessToken', '');
-        res.status(200).json("logout success!")
-    } catch(e) {
-        res.status(500).json(error)
-    }
-})
-
-//오늘의 명반 - 앨범, 음원 고점 가져옴 : 공식 재 수립 필요
-app.get('/getTopRate', async(req, res) => {
+app.get('/gettoprate', async(req, res) => {
     const topAlbum = await pool.query(
         `
         SELECT ac.image_url, (SELECT a.title FROM album AS a WHERE a.id = ar.album_id) AS title, 
@@ -1033,9 +1260,6 @@ app.get('/getTopRate', async(req, res) => {
     }
     res.json(response)
 })
-
-
-
 
 
 
