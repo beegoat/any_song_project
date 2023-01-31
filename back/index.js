@@ -192,10 +192,14 @@ app.post('/login', async(req, res) => {
                     )
                     res.cookie('accessToken', accessToken, {
                       httpOnly: true,
+                      sameSite: 'none',
+                      secure: true
                     })
 
                     res.cookie('refreshToken', refreshToken, {
                         httpOnly: true,
+                        sameSite: 'none',
+                        secure: true
                     })
                     
                     res.status(200).json('success');
