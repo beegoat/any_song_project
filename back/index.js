@@ -11,6 +11,7 @@ import cookieParser from 'cookie-parser';
 const app = express();
 const port = 3001
 const pool = mysql.createPool({
+    // host: "localhost",
     host: "43.201.140.172",
     user: "deepal",
     password: "deepal",
@@ -19,6 +20,7 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0,
   });
+
 const saltRounds = 10;
 const ACCESS_SECRET = "sanjoozzang"
 const REFRESH_SECRET = "sanjoozzang2"
@@ -29,11 +31,12 @@ const GET_TOP_TRACKS ="https://ws.audioscrobbler.com/2.0/?method=chart.gettoptra
 
 app.use(cors({
     origin : [
+        "localhost:3000",
+        "http://localhost:3000",
         "http://43.201.140.172",
         "http://43.201.140.172:3000",
         "43.201.140.172",
         "43.201.140.172:3000",
-        "localhost:3000",
         "http://deepal.site"
     ],
     credentials: true
@@ -195,7 +198,7 @@ app.post('/login', async(req, res) => {
                         httpOnly: true,
                     })
                     
-                    res.status(200).json('login success');
+                    res.status(200).json('success');
                 } else {
                     return res.status(403).json({
                       loginSuccess: false,
@@ -228,7 +231,7 @@ app.post('/jwtauthcheck', jwtMiddleware,  async(req, res) => {
 app.get('/logout', jwtMiddleware, async(req, res) => {
     try{
         res.cookie('accessToken', '');
-        res.status(200).json("logout success!")
+        res.status(200).json("success")
     } catch(e) {
         res.status(500).json(error)
     }
@@ -247,14 +250,14 @@ app.get('/musicsearch', async(req, res) => {
             try{
             const response = await axios.get(`http://ws.audioscrobbler.com/2.0/?method=track.search&track=${searchWord}&api_key=${API_KEY}&format=json&limit=5`, {})
             
-            if(response.data.results.trackmatches !== undefined ){
+            if(response.data.results.trackmatches !== undefined || response.data.results.trackmatches){
                 await response.data.results.trackmatches.track.map((song) =>{
                     if(song.name && song.artist){
                     songInfo.push({ song : song.name, artist : song.artist })
                     } 
                 })
             } else {
-                return
+                return "stop"
             }
             } catch(e) {
                 console.error(e)
@@ -280,9 +283,12 @@ app.get('/musicsearch', async(req, res) => {
         
 
         const getAlbumComplete = async() => {
-            await getAlbumInfo();
-            await getAlbumCover();
-            res.json(songInfoComplete)
+            const response = await getAlbumInfo();
+            if(response !== "stop") {
+                await getAlbumCover();
+                res.json(songInfoComplete)
+            }
+           
         }
 
         getAlbumComplete();
@@ -294,6 +300,7 @@ app.get('/musicsearch', async(req, res) => {
 
 app.get('/searchinfo', async(req, res) => {
     const { artist, song } = req.query
+    
     let musicInfo = []
 
     try{
@@ -367,6 +374,7 @@ app.put('/mynickname', jwtMiddleware, async(req, res) => {
             WHERE id = ?
             `, [nickname, user]
         )
+        res.json("success")
     } catch(e) {
         console.error(e)
     }
@@ -383,6 +391,7 @@ app.put('/myintroduction', jwtMiddleware, async(req, res) => {
             WHERE id = ?
             `, [introduction, user]
         )
+        res.json("success")
     } catch(e) {
         console.error(e)
     }
@@ -445,7 +454,7 @@ app.put('/mypassword', jwtMiddleware, async(req, res) =>{
                     WHERE id = ?
                     `
                     , [password, user])
-                res.json(200)
+                res.json("success")
                 } catch(e) {
                     console.error(e)
                 }
@@ -463,7 +472,7 @@ app.put('/withdraw', jwtMiddleware, async(req, res) =>{
             WHERE id = ?
             `, [user]
         )
-        res.status(200).json({message : "계정이 성공적으로 삭제되었습니다."})
+        res.status(200).json("success")
     } catch(e) {
         console.error(e)
     }
