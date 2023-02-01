@@ -19,6 +19,7 @@ const pool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
+
   });
 
 const saltRounds = 10;
@@ -33,12 +34,12 @@ app.use(cors({
     origin : [
         "http://43.201.140.172",
         "http://43.201.140.172:3000",
-        // "43.201.140.172",
-        // "43.201.140.172:3000",
-        // "http://deepal.site/",
-        // "http://deepal.site",
-        // "deepal.site",
-        // "deepal.site/"
+        "43.201.140.172",
+        "43.201.140.172:3000",
+        "http://deepal.site/",
+        "http://deepal.site",
+        "deepal.site",
+        "deepal.site/"
         
         // "localhost:3000",
         // "http://localhost:3000",
