@@ -31,10 +31,10 @@ const GET_TOP_TRACKS ="https://ws.audioscrobbler.com/2.0/?method=chart.gettoptra
 
 app.use(cors({
     origin : [
-        "localhost:3000",
-        "http://localhost:3000",
         "http://43.201.140.172",
         "http://43.201.140.172:3000",
+        "localhost:3000",
+        "http://localhost:3000",
         "43.201.140.172",
         "43.201.140.172:3000",
         "http://deepal.site"
