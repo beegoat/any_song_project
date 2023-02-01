@@ -30,22 +30,22 @@ const GET_TOP_TRACKS ="https://ws.audioscrobbler.com/2.0/?method=chart.gettoptra
 
 
 app.use(cors({
-    origin : [
-        "43.201.140.172",
-        "43.201.140.172:3000",
+    // origin : [
+        // "43.201.140.172",
+        // "43.201.140.172:3000",
         // "http://deepal.site/",
-        "http://deepal.site",
+        // "http://deepal.site",
         // "deepal.site",
         // "deepal.site/"
         // "http://43.201.140.172",
         // "http://43.201.140.172:3000",
         // "localhost:3000",
         // "http://localhost:3000",
-    ],
-    
+    // ],
+    origin: 'http://deepal.site',
     credentials: true
-
   }));
+
 app.use(express.json());
 app.use(cookieParser())
 
@@ -199,14 +199,14 @@ app.post('/login', async(req, res) => {
                       httpOnly: true,
                       sameSite: 'none',
                       secure: true,
-                      domain: '.deepal.site'
+                    //   domain: '.deepal.site'
                     })
 
                     res.cookie('refreshToken', refreshToken, {
                         httpOnly: true,
                         sameSite: 'none',
                         secure: true,
-                        domain: '.deepal.site'                
+                        // domain: '.deepal.site'                
                     })
                     
                     res.status(200).json('success');
