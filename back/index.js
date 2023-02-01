@@ -12,7 +12,7 @@ const app = express();
 const port = 3001
 const pool = mysql.createPool({
     // host: "localhost",
-    host: "http://deepal.site",
+    host: "43.201.140.172",
     user: "deepal",
     password: "deepal",
     database: "anysong",
