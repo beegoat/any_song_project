@@ -42,7 +42,7 @@ app.use(cors({
         // "localhost:3000",
         // "http://localhost:3000",
     // ],
-    origin: 'http://deepal.site',
+    origin: 'deepal.site',
     credentials: true
   }));
 
@@ -199,14 +199,14 @@ app.post('/login', async(req, res) => {
                       httpOnly: true,
                       sameSite: 'none',
                       secure: true,
-                    //   domain: '.deepal.site'
+                      domain: '.deepal.site'
                     })
 
                     res.cookie('refreshToken', refreshToken, {
                         httpOnly: true,
                         sameSite: 'none',
                         secure: true,
-                        // domain: '.deepal.site'                
+                        domain: '.deepal.site'                
                     })
                     
                     res.status(200).json('success');
