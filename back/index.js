@@ -34,12 +34,14 @@ app.use(cors({
         "43.201.140.172",
         "43.201.140.172:3000",
         "http://deepal.site",
-        "localhost:3000",
-        "http://localhost:3000",
         "http://43.201.140.172",
         "http://43.201.140.172:3000",
+        // "localhost:3000",
+        // "http://localhost:3000",
     ],
+    
     credentials: true
+
   }));
 app.use(express.json());
 app.use(cookieParser())
