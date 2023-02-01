@@ -243,7 +243,10 @@ app.post('/jwtauthcheck', jwtMiddleware,  async(req, res) => {
 
 app.get('/logout', jwtMiddleware, async(req, res) => {
     try{
-        res.cookie('accessToken', '');
+        res.cookie('accessToken', '', {
+            httpOnly: true,
+            domain: '.deepal.site'
+          })
         res.status(200).json("success")
     } catch(e) {
         res.status(500).json(error)
