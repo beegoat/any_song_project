@@ -197,16 +197,16 @@ app.post('/login', async(req, res) => {
                         `, [accessToken, id]
                     )
                     res.cookie('accessToken', accessToken, {
-                      httpOnly: true,
+                    //   httpOnly: true,
                       sameSite: 'none',
-                      secure: true,
+                    //   secure: true,
                       domain: '.deepal.site'
                     })
 
                     res.cookie('refreshToken', refreshToken, {
-                        httpOnly: true,
+                        // httpOnly: true,
                         sameSite: 'none',
-                        secure: true,
+                        // secure: true,
                         domain: '.deepal.site'                
                     })
                     
