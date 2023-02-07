@@ -265,10 +265,8 @@ app.get('/musicsearch', async(req, res) => {
         const getAlbumInfo = async() => {
             try{
             const response = await axios.get(`http://ws.audioscrobbler.com/2.0/?method=track.search&track=${searchWord}&api_key=${API_KEY}&format=json&limit=5`, {})
-            console.log(response.data.length)
-        
-
-            if(response.data.length !== undefined || response.data.results.trackmatches !== undefined || response.data.results.trackmatches ){
+    
+            if(response.data.length !== undefined){
                 await response.data.results.trackmatches.track.map((song) =>{
                     if(song.name && song.artist){
                     songInfo.push({ song : song.name, artist : song.artist })
