@@ -268,7 +268,7 @@ app.get('/musicsearch', async(req, res) => {
             console.log(response.data.length)
         
 
-            if(response.data.result || response.data.results.trackmatches !== undefined || response.data.results.trackmatches ){
+            if(response.data.length !== undefined || response.data.results.trackmatches !== undefined || response.data.results.trackmatches ){
                 await response.data.results.trackmatches.track.map((song) =>{
                     if(song.name && song.artist){
                     songInfo.push({ song : song.name, artist : song.artist })
