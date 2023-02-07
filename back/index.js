@@ -1265,32 +1265,39 @@ app.get('/getnotice', async(req, res) => {
 })
 
 app.get('/gettoprate', async(req, res) => {
-    const topAlbum = await pool.query(
-        `
-        SELECT ac.image_url, (SELECT a.title FROM album AS a WHERE a.id = ar.album_id) AS title, 
-        (SELECT a.artist FROM album AS a WHERE a.id = ar.album_id) AS artist, ar.rate AS rate FROM album_rating ar LEFT JOIN album_cover ac ON ar.album_id = ac.album_id ORDER BY rate DESC LIMIT 1
-        `
-    )
-    const topSongs = await pool.query(
-        `
-        SELECT sc.image_url, (SELECT s.title FROM songs AS s WHERE s.id = sr.song_id) AS title, 
-        (SELECT s.artist FROM songs AS s WHERE s.id = sr.song_id) AS artist, sr.rate AS rate FROM songs_rating sr LEFT JOIN songs_cover sc ON sr.song_id = sc.songs_id ORDER BY rate DESC LIMIT 1
-        `
-    )
-    const album = topAlbum[0][0]
-    const song = topSongs[0][0]
+    try{
+        const topAlbum = await pool.query(
+            `
+            SELECT ac.image_url, (SELECT a.title FROM album AS a WHERE a.id = ar.album_id) AS title, 
+            (SELECT a.artist FROM album AS a WHERE a.id = ar.album_id) AS artist, ar.rate AS rate FROM album_rating ar LEFT JOIN album_cover ac ON ar.album_id = ac.album_id ORDER BY rate DESC LIMIT 1
+            `
+        )
+        const topSongs = await pool.query(
+            `
+            SELECT sc.image_url, (SELECT s.title FROM songs AS s WHERE s.id = sr.song_id) AS title, 
+            (SELECT s.artist FROM songs AS s WHERE s.id = sr.song_id) AS artist, sr.rate AS rate FROM songs_rating sr LEFT JOIN songs_cover sc ON sr.song_id = sc.songs_id ORDER BY rate DESC LIMIT 1
+            `
+        )
 
-    const response = {
-        albumUrl : album.image_url,
-        albumTitle : album.title,
-        albumArtist : album.artist,
-        albumRate : album.rate,
-        songUrl : song.image_url,
-        songTitle : song.title,
-        songArtist : song.artist,
-        songRate : song.rate
+        if(topAlbum && topSongs) {
+        const album = topAlbum[0][0]
+        const song = topSongs[0][0]
+
+        const response = {
+            albumUrl : album.image_url,
+            albumTitle : album.title,
+            albumArtist : album.artist,
+            albumRate : album.rate,
+            songUrl : song.image_url,
+            songTitle : song.title,
+            songArtist : song.artist,
+            songRate : song.rate
+        }
+        res.json(response)
+        }
+    } catch(e) {
+        console.error(e)
     }
-    res.json(response)
 })
 
 
