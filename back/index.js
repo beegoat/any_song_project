@@ -262,53 +262,54 @@ app.get('/musicsearch', async(req, res) => {
     const { searchWord } = req.query
     
     try{
-        const getAlbumInfo = async() => {
-            try{
-            const response = await axios.get(`http://ws.audioscrobbler.com/2.0/?method=track.search&track=${searchWord}&api_key=${API_KEY}&format=json&limit=5`, {})
-            
-            if(response.data.results.trackmatches !== undefined || response.data.results.trackmatches){
-                await response.data.results.trackmatches.track.map((song) =>{
-                    if(song.name && song.artist){
-                    songInfo.push({ song : song.name, artist : song.artist })
-                    } 
-                })
-            } else {
-                return "stop"
-            }
-            } catch(e) {
-                console.error(e)
-            } 
-        }
-    
-        const getAlbumCover = async() => {
-            let i = 0
-            try{
-            while(i<5){
-                const getMusicCover = await axios.get(`https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${API_KEY}&artist=${songInfo[i].artist}&track=${songInfo[i].song}&format=json`)
-                if(getMusicCover.data.track.album !== undefined ){
-                    songInfoComplete.push({song : songInfo[i].song, artist: songInfo[i].artist, image_url: getMusicCover.data.track.album.image[2]['#text']})
+        if(searchWord !== ""){
+            const getAlbumInfo = async() => {
+                try{
+                const response = await axios.get(`http://ws.audioscrobbler.com/2.0/?method=track.search&track=${searchWord}&api_key=${API_KEY}&format=json&limit=5`, {})
+                
+                if(response.data.results.trackmatches !== undefined || response.data.results.trackmatches){
+                    await response.data.results.trackmatches.track.map((song) =>{
+                        if(song.name && song.artist){
+                        songInfo.push({ song : song.name, artist : song.artist })
+                        } 
+                    })
                 } else {
-                    songInfoComplete.push({song : songInfo[i].song, artist: songInfo[i].artist})
+                    return "stop"
                 }
-                i++;
+                } catch(e) {
+                    console.error(e)
+                } 
             }
-            } catch(e) {
-                console.error(e)
-            }
-        }
         
-
-        const getAlbumComplete = async() => {
-            const response = await getAlbumInfo();
-            if(response !== "stop") {
-                await getAlbumCover();
-                res.json(songInfoComplete)
+            const getAlbumCover = async() => {
+                let i = 0
+                try{
+                while(i<5){
+                    const getMusicCover = await axios.get(`https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${API_KEY}&artist=${songInfo[i].artist}&track=${songInfo[i].song}&format=json`)
+                    if(getMusicCover.data.track.album !== undefined ){
+                        songInfoComplete.push({song : songInfo[i].song, artist: songInfo[i].artist, image_url: getMusicCover.data.track.album.image[2]['#text']})
+                    } else {
+                        songInfoComplete.push({song : songInfo[i].song, artist: songInfo[i].artist})
+                    }
+                    i++;
+                }
+                } catch(e) {
+                    console.error(e)
+                }
             }
-           
-        }
+            
 
-        getAlbumComplete();
-        
+            const getAlbumComplete = async() => {
+                const response = await getAlbumInfo();
+                if(response !== "stop") {
+                    await getAlbumCover();
+                    res.json(songInfoComplete)
+                }
+            
+            }
+
+            getAlbumComplete();
+        }
     } catch(e) {
         console.error(e)
     }
